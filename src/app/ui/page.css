@@ -120,12 +120,18 @@ td a {
    `pre-wrap` keeps the whitespace an operator typed — trailing spaces in a value are a real cause of
    a container booting wrong, and a cell that silently collapsed them would hide the evidence.
    `overflow-wrap: anywhere` is what stops a 400-character path from widening the table past the
-   viewport; `max-width` is what keeps the actions column reachable without scrolling. Nothing here
-   clips: a value half-shown is a value misread, and this is the screen a deployment is read from. */
+   viewport. Nothing here clips: a value half-shown is a value misread, and this is the screen a
+   deployment is read from.
+
+   THE MAX-WIDTH IS THE ACTIONS COLUMN'S, not the value's. Measured in a browser at 1920px: an
+   ordinary 110-character mount specification fits on one line at 46rem and pushes Edit and Delete
+   past the table's own right edge, which reads as a broken row rather than as a wide one. 30rem
+   makes that value wrap to two lines and keeps every row's buttons where the eye expects them. A
+   value still never scrolls sideways and is never cut. */
 .value {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
-  max-width: 46rem;
+  max-width: 30rem;
   min-width: 12rem;
 }
 
