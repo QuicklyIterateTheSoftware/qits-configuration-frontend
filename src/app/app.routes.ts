@@ -20,7 +20,7 @@ import { NotFound } from './not-found/not-found';
  *
  * **Every page loads lazily**, the idp scaffold's shape. The three screens share only the small
  * `ui/` furniture, so each URL costs about itself: an operator who opens a deep link to one
- * application's history downloads neither the applications listing nor the editor.
+ * application's history downloads neither the applications listing nor the entries table.
  *
  * **The path shape repeats the API's, noun for noun.** `/configuration/applications/qits-docs` is
  * the page for what `GET /configuration/api/applications/qits-docs/entries` answers, and

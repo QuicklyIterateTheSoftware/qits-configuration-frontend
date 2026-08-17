@@ -4,12 +4,14 @@ import { TestBed } from '@angular/core/testing';
 import { ConfigurationApi } from './configuration-api';
 
 /**
- * The five calls, at the addresses qits-configuration serves them at.
+ * The three reads, at the addresses qits-configuration serves them at. There are only three: this
+ * app writes nothing.
  *
- * The assertions worth having here are the two that are invisible on screen when they are wrong:
+ * The assertions worth having here are the ones that are invisible on screen when they are wrong:
  * **every path is relative**, because a configured origin would leave the edge's session cookie
- * behind and turn every read into a 401; and **a key is percent-encoded**, because `mounts[0]` is
- * the ordinary case rather than the exotic one.
+ * behind and turn every read into a 401; **every call is a GET**, which is what keeps this class a
+ * reader; and **a failure reaches the caller whole**, because the page draws the service's own
+ * sentence from it.
  */
 describe('ConfigurationApi', () => {
   let api: ConfigurationApi;
@@ -78,65 +80,27 @@ describe('ConfigurationApi', () => {
     expect((await history).map((revision) => revision.seq)).toEqual([41, 40]);
   });
 
-  it('writes a value as {"value": …} and answers with the stored entry', async () => {
-    const written = api.setEntry('qits-docs', 'env.QITS_REGISTRY', 'registry.dev.localhost:8080');
+  it('percent-encodes an application name rather than pasting it into the path', async () => {
+    const entries = api.entries('qits docs');
 
-    const request = http.expectOne(
-      '/configuration/api/applications/qits-docs/entries/env.QITS_REGISTRY',
-    );
-    expect(request.request.method).toBe('PUT');
-    expect(request.request.body).toEqual({ value: 'registry.dev.localhost:8080' });
-    request.flush({ entry });
+    http.expectOne('/configuration/api/applications/qits%20docs/entries').flush({ entries: [] });
 
-    expect(await written).toEqual(entry);
+    expect(await entries).toEqual([]);
   });
 
-  it('percent-encodes an indexed key, brackets and all', async () => {
-    const written = api.setEntry('qits-docs', 'mounts[0]', '/srv/docs:/work/docs:ro');
-
-    const request = http.expectOne(
-      '/configuration/api/applications/qits-docs/entries/mounts%5B0%5D',
-    );
-    request.flush({ entry: { ...entry, key: 'mounts[0]' } });
-
-    expect((await written).key).toBe('mounts[0]');
-  });
-
-  it('sends the empty string as a value rather than dropping the field', async () => {
-    const written = api.setEntry('qits-docs', 'env.EMPTY', '');
-
-    const request = http.expectOne('/configuration/api/applications/qits-docs/entries/env.EMPTY');
-    expect(request.request.body).toEqual({ value: '' });
-    request.flush({ entry: { ...entry, key: 'env.EMPTY', value: '' } });
-
-    expect((await written).value).toBe('');
-  });
-
-  it('deletes one entry and expects no body back', async () => {
-    const removed = api.deleteEntry('qits-docs', 'mounts[0]');
-
-    const request = http.expectOne(
-      '/configuration/api/applications/qits-docs/entries/mounts%5B0%5D',
-    );
-    expect(request.request.method).toBe('DELETE');
-    request.flush(null, { status: 204, statusText: 'No Content' });
-
-    await expect(removed).resolves.toBeUndefined();
-  });
-
-  it('rejects with the service’s refusal rather than swallowing it', async () => {
-    const written = api.setEntry('qits-docs', 'env.9LIVES', 'x');
+  it('rejects with the service’s own message rather than swallowing it', async () => {
+    const entries = api.entries('qits-docs');
 
     http
-      .expectOne('/configuration/api/applications/qits-docs/entries/env.9LIVES')
+      .expectOne('/configuration/api/applications/qits-docs/entries')
       .flush(
-        { message: 'Not a valid environment variable name in key env.9LIVES.' },
+        { message: 'An application name is required' },
         { status: 400, statusText: 'Bad Request' },
       );
 
-    await expect(written).rejects.toMatchObject({
+    await expect(entries).rejects.toMatchObject({
       status: 400,
-      error: { message: 'Not a valid environment variable name in key env.9LIVES.' },
+      error: { message: 'An application name is required' },
     });
   });
 });

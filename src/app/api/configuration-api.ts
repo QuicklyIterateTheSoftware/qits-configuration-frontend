@@ -9,25 +9,24 @@ import type {
   ListApplicationsResponse,
   ListEntriesResponse,
   ListHistoryResponse,
-  SetEntryResponse,
 } from './dto';
 
 /**
- * Everything this app reads and writes, and it speaks to exactly one upstream: qits-configuration,
- * through the edge, at `/configuration/api`.
+ * Everything this app reads, and it speaks to exactly one upstream: qits-configuration, through the
+ * edge, at `/configuration/api`.
  *
- * **This class writes, which makes it the first of its kind among the explorers** — the sibling
- * SPAs read a store somebody else fills. Two consequences are deliberate here:
+ * **THERE IS NO WRITE HERE, and its absence is the design.** The entries are system state: the
+ * platform's own processes set them through the API, each write part of a larger operation with
+ * more to do afterwards. This app is a reader of that state, so it holds no PUT and no DELETE —
+ * nothing for a screen to reach for.
+ *
+ * Two consequences of the reads are deliberate:
  *
  * - **Every call is one-shot.** `firstValueFrom` unwraps the observable immediately, and there is no
- *   `httpResource` anywhere: a resource that re-fetched would re-issue a PUT or a DELETE, and the
- *   reads are re-issued by the pages after a write rather than on a schedule, so what is on screen
- *   is what the store answered after the change rather than what a cache remembers.
+ *   `httpResource` anywhere: the pages re-issue their own read from a retry button rather than on a
+ *   schedule, so what is on screen is what the store answered rather than what a cache remembers.
  * - **Failures are thrown, not described.** An `HttpErrorResponse` reaching a caller still holds the
- *   service's `{"message": …}` body, and that message is the one thing a refused write must show —
- *   qits-configuration names what is wrong with the value it refused, and paraphrasing it here would
- *   throw away the only sentence that tells an operator what to type instead. `ui/loadable.ts` is
- *   where that body is read, in one place.
+ *   service's `{"message": …}` body, and `ui/loadable.ts` is where that body is read, in one place.
  *
  * `HttpClient` on the fetch backend rather than bare `fetch()` buys two things: `HttpTestingController`,
  * which is the whole basis of this repository's specs, and a call that goes through `window.fetch`,
@@ -82,44 +81,7 @@ export class ConfigurationApi {
     return response.revisions ?? [];
   }
 
-  /**
-   * Set one entry's value — 201 the first time the key is seen, 200 afterwards, and no revision at
-   * all when the value is byte-for-byte what is already stored.
-   *
-   * The answer is the stored entry, so the caller can draw what the store now holds rather than what
-   * it just typed. That difference is not cosmetic: the service trims nothing and rejects an absent
-   * value, and a screen showing the request instead of the response would hide either.
-   */
-  async setEntry(application: string, key: string, value: string): Promise<ConfigurationEntry> {
-    const response = await firstValueFrom(
-      this.http.put<SetEntryResponse>(this.entryUrl(application, key), { value }),
-    );
-    return response.entry;
-  }
-
-  /**
-   * Remove one entry. 204, or 404 when it is not there.
-   *
-   * The value is not lost — the service appends a deleted revision — which is what makes the
-   * confirmation on the page a courtesy rather than the last line of defence, and what the history
-   * page is for.
-   */
-  async deleteEntry(application: string, key: string): Promise<void> {
-    await firstValueFrom(this.http.delete<void>(this.entryUrl(application, key)));
-  }
-
   private applicationUrl(application: string): string {
     return `${this.base}/configuration/api/applications/${encodeURIComponent(application)}`;
-  }
-
-  /**
-   * **The key is percent-encoded, and `mounts[0]` is why.** Square brackets are legal in a path
-   * segment by RFC 3986's letter and are mangled by enough of what sits between a browser and a
-   * JAX-RS route that spelling them raw would be a bet. `encodeURIComponent` also keeps a key
-   * holding a slash — which the grammar forbids, so it can only arrive by a service change — from
-   * silently becoming two path segments and hitting a different route.
-   */
-  private entryUrl(application: string, key: string): string {
-    return `${this.applicationUrl(application)}/entries/${encodeURIComponent(key)}`;
   }
 }

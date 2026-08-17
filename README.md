@@ -1,15 +1,21 @@
 # QitsSpaConfiguration
 
 The deployment configuration's frontend: what each application on this platform will be deployed
-with, and the screen an operator changes it on. Served by qits-configuration itself at
+with, and the screen an operator reads it on. Served by qits-configuration itself at
 `/configuration/` through Quinoa. Three routes, all of them inside the platform chrome.
 
 - **`/configuration/`** — every application this service holds entries for, with its entry count and
   head revision.
-- **`/configuration/applications/<app>`** — one application's entries: read them, edit one, delete
-  one, add one.
+- **`/configuration/applications/<app>`** — one application's entries, as they are stored now.
 - **`/configuration/applications/<app>/history`** — every write to that application, newest first,
   deletions included.
+
+**THIS APPLICATION READS AND NEVER WRITES.** The entries are system state: the platform's own
+processes set them through the API — a deployment, a bootstrap import, a service that learns its own
+address — and each of those writes is part of a larger operation with more to do afterwards. A hand
+edit in a browser lands in the middle of that with none of the rest of it, so no screen here offers
+one, and the API class holds no PUT and no DELETE to reach for. The entries page says so in a
+sentence, because a table with no buttons otherwise reads as a table whose buttons failed to load.
 
 **What this replaces is a file nobody could see.** Deployment environment used to be a hand-edited
 properties file on the deployer's config volume, snapshotted at boot: an edit was inert until the
@@ -19,23 +25,15 @@ spelling the deployer already reads. These three pages are the first time that s
 
 **Every value is drawn whole.** A cell here holds a mount specification, an alias list, a URL with a
 query string — occasionally something very long — and an operator reads it to answer "what will this
-deployment run with". So nothing truncates: the value column wraps, and the editor is a textarea.
-A screen that clipped at some width would say something false about a deployment while looking
-entirely normal.
+deployment run with". So nothing truncates: the value column wraps. A screen that clipped at some
+width would say something false about a deployment while looking entirely normal.
 
 **A write reaches a container on its next deployment, and the pages say so.** The deployer pulls an
 application's entries once per deployment and records the revision it deployed with; nothing here
 pushes. Someone who assumed otherwise would go looking for a bug in the deployer.
 
-**Deleting asks first, in the row.** `window.confirm` renders outside the page and jsdom implements
-none of it, so a confirmation written that way could never be proven by a test. The two-press form
-is a state on the row, and the suite presses both.
-
-**A refused key shows the service's own sentence, verbatim.** qits-configuration names which part of
-the grammar a key missed — "After `env.` it must start with a letter or an underscore…" — and that
-sentence is the only thing on screen that says what to type instead. The client-side grammar check
-in `src/app/api/key-grammar.ts` exists to save the round trip, never to replace the answer: it may
-refuse too little, and it must never refuse what the service would take.
+**A failed read is drawn where the table would be.** The heading, the breadcrumb and the note stay,
+and the error carries the service's own message with its status in front of it, plus a retry.
 
 **This application handles no token.** Every call is a same-origin path under `/configuration/api`,
 and the edge's session is what authenticates it — the SPA neither holds a credential nor knows one

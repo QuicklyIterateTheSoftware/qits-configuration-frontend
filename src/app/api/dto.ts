@@ -1,6 +1,7 @@
 /**
- * The wire, written down. Every type here is the shape qits-configuration sends or takes on
- * `/configuration/api`, and nothing here is this application's own idea.
+ * The wire, written down. Every type here is the shape qits-configuration sends on
+ * `/configuration/api`, and nothing here is this application's own idea. This app only reads, so
+ * only the read shapes are here.
  *
  * **`entryClass`, not `class`.** The column is `class` and the service says why it cannot spell it
  * that way on the wire — a Java record component cannot be named after a keyword. The name travels
@@ -54,9 +55,4 @@ export interface ListEntriesResponse {
 /** `GET /configuration/api/applications/{app}/history` — newest first, deletions included. */
 export interface ListHistoryResponse {
   readonly revisions: readonly ConfigurationRevision[];
-}
-
-/** What `PUT …/entries/{key}` answers with: 201 the first time a key is seen, 200 after. */
-export interface SetEntryResponse {
-  readonly entry: ConfigurationEntry;
 }

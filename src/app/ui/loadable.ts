@@ -50,30 +50,6 @@ export function describeError(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-/**
- * WHAT A REFUSED WRITE SAYS, and the one place this app treats an error body as content rather than
- * as a diagnostic.
- *
- * qits-configuration refuses a key by naming exactly which part of the grammar it missed — "After
- * `env.` it must start with a letter or an underscore…" — and that sentence is the only thing on
- * screen that tells an operator what to type instead. So it is shown VERBATIM: no status code
- * bolted on the front, no rewording, no "the request failed" wrapper around it. A 400 whose body
- * carries no message is the one case with nothing to quote, and then the status is all there is.
- *
- * The status is still worth keeping out of the sentence rather than out of the page: a 400 is the
- * service disagreeing with what was typed, while a 401 or a 503 is not about the key at all.
- */
-export function refusalMessage(error: unknown): string {
-  if (error instanceof HttpErrorResponse) {
-    if (error.status === 0) {
-      return 'The service is unreachable.';
-    }
-    const message = serverMessage(error.error);
-    return message ?? `The service refused this with HTTP ${error.status}.`;
-  }
-  return error instanceof Error ? error.message : String(error);
-}
-
 /** The `message` field of an error body, when the body is one. */
 function serverMessage(body: unknown): string | null {
   if (typeof body === 'object' && body !== null && 'message' in body) {

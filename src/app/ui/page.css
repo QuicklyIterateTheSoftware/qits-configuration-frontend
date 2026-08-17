@@ -4,9 +4,9 @@
 
    It is spa-events' sheet, with one addition this application could not do without: `.value`.
    Everywhere else on the platform a table cell holds an identifier, a status or a timestamp, and
-   `white-space: nowrap` is right for all three. Here a cell holds a VALUE an operator typed — a
+   `white-space: nowrap` is right for all three. Here a cell holds a stored VALUE — a
    mount specification, a comma-separated alias list, a URL with a query string, occasionally a
-   whole certificate — and nowrap would push the actions column off the screen while wrapping
+   whole certificate — and nowrap would push the columns after it off the screen while wrapping
    mid-token would make a path unreadable. `.value` wraps, but only where wrapping is safe. */
 
 :host {
@@ -123,11 +123,11 @@ td a {
    viewport. Nothing here clips: a value half-shown is a value misread, and this is the screen a
    deployment is read from.
 
-   THE MAX-WIDTH IS THE ACTIONS COLUMN'S, not the value's. Measured in a browser at 1920px: an
-   ordinary 110-character mount specification fits on one line at 46rem and pushes Edit and Delete
-   past the table's own right edge, which reads as a broken row rather than as a wide one. 30rem
-   makes that value wrap to two lines and keeps every row's buttons where the eye expects them. A
-   value still never scrolls sideways and is never cut. */
+   THE MAX-WIDTH IS THE COLUMNS AFTER IT. Measured in a browser at 1920px: an ordinary
+   110-character mount specification fits on one line at 46rem and pushes the class and changed
+   columns past the table's own right edge, which reads as a broken row rather than as a wide one.
+   30rem makes that value wrap to two lines and keeps every row's last columns where the eye expects
+   them. A value still never scrolls sideways and is never cut. */
 .value {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
