@@ -1,0 +1,192 @@
+<p class="crumbs">
+  <a routerLink="/">Applications</a>
+  <span class="sep">/</span>
+  <span>{{ application() }}</span>
+</p>
+
+<header class="head">
+  <h1>{{ application() }}</h1>
+  <a class="history-link" [routerLink]="['/applications', application(), 'history']">History</a>
+</header>
+<p class="lede">
+  What this application's next deployment will carry. Every change is kept, with who made it.
+</p>
+
+<app-async
+  [state]="state()"
+  loadingLabel="Loading entries"
+  errorLabel="Could not load the entries"
+  (retry)="load()"
+/>
+
+@if (rowRefusal()) {
+  <p class="page-error" role="alert">{{ rowRefusal() }}</p>
+}
+
+@if (state().kind === 'ready') {
+  @if (entries().length === 0) {
+    <app-empty
+      message="This application has no entries. It will deploy with whatever its image and the deployer's own defaults give it."
+    />
+  } @else {
+    <div class="scroll">
+      <table>
+        <caption>
+          {{
+            caption()
+          }}, stored now. A change here reaches a container on its next deployment.
+        </caption>
+        <thead>
+          <tr>
+            <th scope="col">Key</th>
+            <th scope="col">Value</th>
+            <th scope="col">Class</th>
+            <th scope="col">Changed</th>
+            <th scope="col"><span class="sr">Actions</span></th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (entry of entries(); track entry.key) {
+            <tr>
+              <th scope="row" class="mono key">{{ entry.key }}</th>
+              <td class="value mono">
+                @if (editing() === entry.key) {
+                  <textarea
+                    class="editor"
+                    rows="3"
+                    spellcheck="false"
+                    [attr.aria-label]="'Value of ' + entry.key"
+                    [value]="draft()"
+                    (input)="onDraft($event)"
+                  ></textarea>
+                } @else if (entry.value.length === 0) {
+                  <span class="subtle empty-value">(empty)</span>
+                } @else {
+                  {{ entry.value }}
+                }
+              </td>
+              <td><qits-badge [label]="entry.entryClass" tone="neutral" /></td>
+              <td class="subtle changed">
+                {{ formatInstant(entry.updatedAt) }}<br />
+                <span class="by">by {{ actor(entry.updatedBy) }}</span>
+              </td>
+              <td class="actions">
+                @if (editing() === entry.key) {
+                  <qits-button
+                    variant="primary"
+                    size="sm"
+                    [busy]="busy() === entry.key"
+                    [disabled]="busy() !== null"
+                    (pressed)="save(entry.key)"
+                    >Save</qits-button
+                  >
+                  <qits-button
+                    variant="ghost"
+                    size="sm"
+                    [disabled]="busy() !== null"
+                    (pressed)="cancelEdit()"
+                    >Cancel</qits-button
+                  >
+                } @else if (confirming() === entry.key) {
+                  <span class="confirm" role="alert">Delete this entry?</span>
+                  <qits-button
+                    variant="primary"
+                    size="sm"
+                    [busy]="busy() === entry.key"
+                    [disabled]="busy() !== null"
+                    (pressed)="confirmDelete(entry.key)"
+                    >Delete</qits-button
+                  >
+                  <qits-button
+                    variant="ghost"
+                    size="sm"
+                    [disabled]="busy() !== null"
+                    (pressed)="cancelDelete()"
+                    >Keep</qits-button
+                  >
+                } @else {
+                  <qits-button
+                    variant="secondary"
+                    size="sm"
+                    [disabled]="busy() !== null"
+                    (pressed)="startEdit(entry)"
+                    >Edit</qits-button
+                  >
+                  <qits-button
+                    variant="ghost"
+                    size="sm"
+                    [disabled]="busy() !== null"
+                    (pressed)="askDelete(entry.key)"
+                    >Delete</qits-button
+                  >
+                }
+              </td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+  }
+
+  <section class="new">
+    <h2>Add an entry</h2>
+    <form (submit)="$event.preventDefault(); create()">
+      <label class="field">
+        <span class="label" id="new-key-label">Key</span>
+        <input
+          type="text"
+          class="text mono"
+          spellcheck="false"
+          autocapitalize="none"
+          autocomplete="off"
+          placeholder="env.QITS_EXAMPLE"
+          aria-labelledby="new-key-label"
+          [attr.aria-invalid]="newKeyProblem() ? 'true' : null"
+          [value]="newKey()"
+          (input)="onNewKey($event)"
+        />
+      </label>
+      @if (newKeyProblem()) {
+        <p class="field-problem" role="alert">{{ newKeyProblem() }}</p>
+      } @else {
+        <p class="hint">
+          <code>env.&lt;VAR&gt;</code> for an environment variable, or one of
+          <code>mounts[i]</code>, <code>publishes[i]</code>, <code>groups[i]</code>,
+          <code>aliases[i]</code>. What the value means is read by the deployer, not by this
+          service.
+        </p>
+      }
+
+      <label class="field">
+        <span class="label" id="new-value-label">Value</span>
+        <textarea
+          class="text mono"
+          rows="3"
+          spellcheck="false"
+          aria-labelledby="new-value-label"
+          [value]="newValue()"
+          (input)="onNewValue($event)"
+        ></textarea>
+      </label>
+
+      <!-- A submit button and NO (pressed) handler. The form's own submit is the single path into
+           create(): a click on a submit button fires it, and so does Enter in the key field, so
+           binding both would write the entry twice on every press. -->
+      <div class="actions">
+        <qits-button type="submit" variant="primary" [busy]="creating()" [disabled]="!canCreate()"
+          >Add entry</qits-button
+        >
+      </div>
+
+      @if (createRefusal()) {
+        <p class="field-problem" role="alert">{{ createRefusal() }}</p>
+      }
+    </form>
+  </section>
+}
+
+<p class="note">
+  Writing an entry does not change a running container. qits-platform-deployments reads this
+  application's entries once per deployment and records the revision it deployed with, so a change
+  here arrives with the next deployment.
+</p>
