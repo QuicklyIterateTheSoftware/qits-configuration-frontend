@@ -1,14 +1,22 @@
 # QitsSpaConfiguration
 
 The deployment configuration's frontend: what each application on this platform will be deployed
-with, and the screen an operator reads it on. Served by qits-configuration itself at
-`/configuration/` through Quinoa. Three routes, all of them inside the platform chrome.
+with, and the screen an operator reads it on. Served by qits-configuration itself at the **root of
+its own host** (`configuration.<env>.<domain>`) through Quinoa. Three routes, all of them inside the
+platform chrome.
 
-- **`/configuration/`** — every application this service holds entries for, with its entry count and
-  head revision.
-- **`/configuration/applications/<app>`** — one application's entries, as they are stored now.
-- **`/configuration/applications/<app>/history`** — every write to that application, newest first,
-  deletions included.
+- **`/`** — every application this service holds entries for, with its entry count and head
+  revision.
+- **`/applications/<app>`** — one application's entries, as they are stored now.
+- **`/applications/<app>/history`** — every write to that application, newest first, deletions
+  included.
+
+**Each is addressable twice.** The platform's URL grammar puts the same page under
+`/<projectSlug>/<category>/<repoName>/…`, and the scoped form resolves to the same component:
+`app.routes.ts` mounts one list of children under both, guarded on the category. With a repository
+in scope the listing is a doorway rather than a destination — it replaces the address with
+`applications/<repoName>` once the listing proves that application exists, and says plainly that the
+repository has none when it does not.
 
 **THIS APPLICATION READS AND NEVER WRITES.** The entries are system state: the platform's own
 processes set them through the API — a deployment, a bootstrap import, a service that learns its own
@@ -47,13 +55,14 @@ seeding. Neither belongs in a browser, so neither is in this app's API class to 
 ## How it is served
 
 qits-configuration carries this repository as a git submodule at `service/src/main/webui` — Quinoa's
-ui-dir — and builds it during `mvn package`, serving the bundle at `/configuration/`. The segment is
-spelled here as `baseHref` in `angular.json` and there as `quarkus.quinoa.ui-root-path`; the two move
-together, and a disagreement serves a page whose every asset 404s. This repository ships no
-container image of its own.
+ui-dir — and builds it during `mvn package`, serving the bundle at the root of its host. The root is
+spelled here as `baseHref` in `angular.json` and there as `quarkus.quinoa.ui-root-path`, both `/`;
+the two move together, and a disagreement serves a page whose every asset 404s. This repository
+ships no container image of its own.
 
-Note the known wart, which is every client's alike: bare `/configuration` (no trailing slash) is a
-404. `/configuration/` works.
+`/configuration` is the MACHINE segment now — the API and the framework root — and both spellings of
+it answer 404 rather than this page. That is what `quarkus.quinoa.ignored-path-prefixes` is for, and
+it retires the old trailing-slash wart along with it.
 
 ## Development server
 
@@ -61,12 +70,10 @@ Note the known wart, which is every client's alike: bare `/configuration` (no tr
 ng serve
 ```
 
-Then open `http://localhost:4200/`. `proxy.conf.json` forwards `/configuration/api` and
-`/configuration/q` to a gateway on `localhost:8080`, because `ng serve` puts no gateway in front. In
-a deployment every call is a same-origin path behind the real one.
-
-The platform chrome asks the gateway for `/main-navigation`, which `ng serve` does not proxy — so
-the sidebar renders "Navigation unavailable". That is the intended degraded state, not a fault.
+Then open `http://localhost:4200/`. `proxy.conf.json` forwards `/configuration/api`,
+`/configuration/q`, `/projects/api` and `/main-navigation` to the edge on `localhost:8080`, because
+`ng serve` puts nothing in front. In a deployment every call is a same-origin path on this service's
+own host, which the edge path-routes to whichever service owns the prefix.
 
 ## Running the checks
 

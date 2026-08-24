@@ -1,10 +1,11 @@
 import { provideHttpClient } from '@angular/common/http';
+import type { EnvironmentProviders } from '@angular/core';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { provideLocationMocks } from '@angular/common/testing';
 import { TestBed } from '@angular/core/testing';
-import { provideRouter } from '@angular/router';
+import { provideRouter, Router } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
-import { provideQitsNavigationLinks } from '@qits/ui-components';
+import { provideQitsNavigationLinks, provideQitsScope } from '@qits/ui-components';
 import type { ApplicationSummary } from '../api/dto';
 import { routes } from '../app.routes';
 
@@ -30,7 +31,11 @@ describe('ApplicationsPage', () => {
     ...over,
   });
 
-  beforeEach(() => {
+  /**
+   * Configured per test rather than in a `beforeEach`, because the scoped cases need one provider
+   * more and `TestBed` refuses to be reconfigured once anything has been injected out of it.
+   */
+  function configure(extra: readonly EnvironmentProviders[] = []): void {
     TestBed.configureTestingModule({
       providers: [
         provideRouter(routes),
@@ -38,10 +43,11 @@ describe('ApplicationsPage', () => {
         provideHttpClient(),
         provideHttpClientTesting(),
         provideQitsNavigationLinks([]),
+        ...extra,
       ],
     });
     http = TestBed.inject(HttpTestingController);
-  });
+  }
 
   async function settle(): Promise<void> {
     for (let round = 0; round < 8; round += 1) {
@@ -51,6 +57,7 @@ describe('ApplicationsPage', () => {
   }
 
   async function open(): Promise<void> {
+    configure();
     harness = await RouterTestingHarness.create('/');
     await settle();
   }
@@ -124,5 +131,51 @@ describe('ApplicationsPage', () => {
 
     expect(page().querySelectorAll('tbody tr')).toHaveLength(1);
     http.verify();
+  });
+
+  /**
+   * The scoped form: an operator who arrived from a repository's sidebar wants that repository's
+   * configuration, not a list to find it in.
+   *
+   * The two outcomes are the whole feature — the repository has an application here, or it does
+   * not — and the second is what stops the redirect being a guess. Both are asserted against the
+   * listing rather than against the name, because the name alone would land on a page for something
+   * this service holds nothing for.
+   */
+  describe('under a repository scope', () => {
+    async function openScoped(): Promise<void> {
+      configure([provideQitsScope('repository')]);
+      harness = await RouterTestingHarness.create('/qits/services/qits-docs');
+      await settle();
+    }
+
+    it('replaces the address with the scoped repository own page when it has one', async () => {
+      await openScoped();
+      await answer([summary({ application: 'qits-docs' }), summary({ application: 'qits-ci' })]);
+
+      expect(TestBed.inject(Router).url).toBe('/qits/services/qits-docs/applications/qits-docs');
+      // The entries page is now on screen and issuing its own reads; they are not this spec's.
+      http.match(() => true);
+    });
+
+    it('stays on the list with a note when the repository has no configuration', async () => {
+      await openScoped();
+      await answer([summary({ application: 'qits-ci' })]);
+
+      expect(TestBed.inject(Router).url).toBe('/qits/services/qits-docs');
+      expect(page().textContent).toContain('qits-docs has no configuration of its own here');
+      expect(page().querySelectorAll('tbody tr')).toHaveLength(1);
+      http.verify();
+    });
+
+    it('keeps its links inside the scope', async () => {
+      await openScoped();
+      await answer([summary({ application: 'qits-ci' })]);
+
+      expect(page().querySelector('tbody a')?.getAttribute('href')).toBe(
+        '/qits/services/qits-docs/applications/qits-ci',
+      );
+      http.verify();
+    });
   });
 });

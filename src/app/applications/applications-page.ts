@@ -1,10 +1,11 @@
 import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
-import { RouterLink } from '@angular/router';
+import { Router, RouterLink } from '@angular/router';
 import type { ApplicationSummary } from '../api/dto';
 import { ConfigurationApi } from '../api/configuration-api';
 import { Async } from '../ui/async';
 import { Empty } from '../ui/empty';
 import { plural } from '../ui/format';
+import { ConfigurationLinks } from '../ui/links';
 import { LOADING, failed, ready, type Loadable } from '../ui/loadable';
 
 /**
@@ -28,6 +29,16 @@ import { LOADING, failed, ready, type Loadable } from '../ui/loadable';
  * There is no create-an-application form, because there is no such thing: an application exists here
  * because it has an entry, and the first entry is written on the application's own page. A form here
  * would create a name with nothing behind it, which the service has no row for.
+ *
+ * **With a repository in scope this page is a doorway rather than a destination.** An operator who
+ * arrived from that repository's sidebar wants its configuration, not a list to find it in — so
+ * when the listing contains an application of that name the page replaces the address with it. It
+ * REPLACES rather than pushes: the list was never a step the reader took, and leaving it in the
+ * history would make Back bounce them straight forward again.
+ *
+ * The redirect waits for the listing on purpose. Navigating on the name alone would land on a page
+ * for an application this service has nothing for, and the honest answer to "this repository has no
+ * configuration" is this list with a line saying so.
  */
 @Component({
   selector: 'app-applications-page',
@@ -50,6 +61,13 @@ import { LOADING, failed, ready, type Loadable } from '../ui/loadable';
       errorLabel="Could not load the applications"
       (retry)="load()"
     />
+
+    @if (unconfigured(); as repository) {
+      <p class="note" role="status">
+        {{ repository }} has no configuration of its own here. Everything this service holds is
+        below.
+      </p>
+    }
 
     @if (state().kind === 'ready') {
       @if (applications().length === 0) {
@@ -76,7 +94,7 @@ import { LOADING, failed, ready, type Loadable } from '../ui/loadable';
               @for (application of applications(); track application.application) {
                 <tr>
                   <td>
-                    <a [routerLink]="['/applications', application.application]">{{
+                    <a [routerLink]="links.commands('applications', application.application)">{{
                       application.application
                     }}</a>
                   </td>
@@ -99,8 +117,13 @@ import { LOADING, failed, ready, type Loadable } from '../ui/loadable';
 })
 export class ApplicationsPage {
   private readonly api = inject(ConfigurationApi);
+  private readonly router = inject(Router);
+  protected readonly links = inject(ConfigurationLinks);
 
   protected readonly state = signal<Loadable<readonly ApplicationSummary[]>>(LOADING);
+
+  /** The scoped repository, once the listing has answered and does NOT contain it. */
+  protected readonly unconfigured = signal<string | undefined>(undefined);
 
   protected readonly applications = computed(() => {
     const state = this.state();
@@ -118,9 +141,32 @@ export class ApplicationsPage {
   /** The page's one request, re-issued by the retry button and by nothing else. */
   protected load(): void {
     this.state.set(LOADING);
+    this.unconfigured.set(undefined);
     this.api.applications().then(
-      (applications) => this.state.set(ready(applications)),
+      (applications) => {
+        this.state.set(ready(applications));
+        this.settleScope(applications);
+      },
       (error: unknown) => this.state.set(failed(error)),
     );
+  }
+
+  /**
+   * Go to the scoped repository's own page, or say plainly that it has none.
+   *
+   * Matched by NAME and by nothing else: an application id here is the deployed application's name,
+   * which is the repository's. There is no field on either side recording the link, so a repository
+   * whose application is named differently falls to the note rather than to a wrong page.
+   */
+  private settleScope(applications: readonly ApplicationSummary[]): void {
+    const repository = this.links.scope()?.repository;
+    if (!repository) return;
+    if (applications.some((application) => application.application === repository)) {
+      void this.router.navigate(this.links.commands('applications', repository), {
+        replaceUrl: true,
+      });
+      return;
+    }
+    this.unconfigured.set(repository);
   }
 }

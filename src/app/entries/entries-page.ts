@@ -15,6 +15,7 @@ import { Async } from '../ui/async';
 import { Empty } from '../ui/empty';
 import { NONE, actor, formatInstant, plural } from '../ui/format';
 import { LOADING, failed, ready, type Loadable } from '../ui/loadable';
+import { ConfigurationLinks } from '../ui/links';
 
 /**
  * One application's configuration, as it is stored now.
@@ -49,6 +50,8 @@ import { LOADING, failed, ready, type Loadable } from '../ui/loadable';
   styleUrls: ['../ui/page.css', './entries-page.css'],
 })
 export class EntriesPage {
+  protected readonly links = inject(ConfigurationLinks);
+
   private readonly route = inject(ActivatedRoute);
   private readonly api = inject(ConfigurationApi);
 
