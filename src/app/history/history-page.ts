@@ -14,6 +14,7 @@ import { Async } from '../ui/async';
 import { Empty } from '../ui/empty';
 import { NONE, actor, formatInstant, plural } from '../ui/format';
 import { LOADING, failed, ready, type Loadable } from '../ui/loadable';
+import { ConfigurationLinks } from '../ui/links';
 
 /**
  * What has been written to one application's configuration, newest first.
@@ -43,9 +44,9 @@ import { LOADING, failed, ready, type Loadable } from '../ui/loadable';
   styleUrls: ['../ui/page.css'],
   template: `
     <p class="crumbs">
-      <a routerLink="/">Applications</a>
+      <a [routerLink]="links.commands()">Applications</a>
       <span class="sep">/</span>
-      <a [routerLink]="['/applications', application()]">{{ application() }}</a>
+      <a [routerLink]="links.commands('applications', application())">{{ application() }}</a>
       <span class="sep">/</span>
       <span>History</span>
     </p>
@@ -131,6 +132,8 @@ import { LOADING, failed, ready, type Loadable } from '../ui/loadable';
   `,
 })
 export class HistoryPage {
+  protected readonly links = inject(ConfigurationLinks);
+
   private readonly route = inject(ActivatedRoute);
   private readonly api = inject(ConfigurationApi);
 

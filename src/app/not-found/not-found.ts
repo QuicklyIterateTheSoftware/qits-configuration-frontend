@@ -1,5 +1,6 @@
-import { ChangeDetectionStrategy, Component } from '@angular/core';
+import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
 import { RouterLink } from '@angular/router';
+import { ConfigurationLinks } from '../ui/links';
 
 /**
  * A URL under `/configuration/` that this app does not recognise.
@@ -23,7 +24,7 @@ import { RouterLink } from '@angular/router';
       This is the deployment configuration. It lists the applications it holds entries for, shows
       one application's entries, and shows what has been written to them — and nothing else.
     </p>
-    <p><a routerLink="/">Back to the applications</a></p>
+    <p><a [routerLink]="links.commands()">Back to the applications</a></p>
   `,
   styles: `
     h1 {
@@ -32,4 +33,6 @@ import { RouterLink } from '@angular/router';
     }
   `,
 })
-export class NotFound {}
+export class NotFound {
+  protected readonly links = inject(ConfigurationLinks);
+}

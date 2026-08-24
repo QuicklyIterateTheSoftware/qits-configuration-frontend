@@ -1,12 +1,14 @@
 <p class="crumbs">
-  <a routerLink="/">Applications</a>
+  <a [routerLink]="links.commands()">Applications</a>
   <span class="sep">/</span>
   <span>{{ application() }}</span>
 </p>
 
 <header class="head">
   <h1>{{ application() }}</h1>
-  <a class="history-link" [routerLink]="['/applications', application(), 'history']">History</a>
+  <a class="history-link" [routerLink]="links.commands('applications', application(), 'history')"
+    >History</a
+  >
 </header>
 <p class="lede">
   What this application's next deployment will carry. Every change is kept, with who made it.
