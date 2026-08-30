@@ -71,9 +71,35 @@ describe('app routes', () => {
     expect(await resolve('/applications/qits-docs/history')).not.toBe(own);
   });
 
-  /** A second segment that is not a category is not a scope, so the 404 page takes it. */
-  it('does not read an arbitrary three-segment path as a scope', async () => {
-    expect(await resolve('/qits/nonsense/qits-docs')).toBe(NotFound);
+  /**
+   * The middle segment is the repository's component now, and the archetype form it had before
+   * keeps working — the platform serves links in both spellings, and both land on the same page.
+   */
+  it('serves the three doors under a repository addressed by its component', async () => {
+    expect(await resolve('/qits/qits-configuration/qits-configuration-service')).toBe(
+      await resolve('/'),
+    );
+    expect(
+      await resolve(
+        '/qits/qits-configuration/qits-configuration-service/applications/qits-docs/history',
+      ),
+    ).toBe(await resolve('/applications/qits-docs/history'));
+  });
+
+  /**
+   * A component is an open set, so this app's own pages are what the guard excludes — otherwise
+   * `applications` would read as a component and the entries page under a project would be lost.
+   */
+  it('keeps its own pages under a project out of the group form', async () => {
+    expect(await resolve('/qits/applications/qits-docs')).toBe(
+      await resolve('/applications/qits-docs'),
+    );
+  });
+
+  /** Nothing compiled in can prove a component, so a path this deep is read as a scope and settles
+   * on the listing; a mistyped address of this app's own is still a 404. */
+  it('reads an unknown middle segment as a group, and 404s what is not an address', async () => {
+    expect(await resolve('/qits/nonsense/qits-docs')).toBe(await resolve('/'));
     expect(await resolve('/no/such/page/here')).toBe(NotFound);
   });
 });
