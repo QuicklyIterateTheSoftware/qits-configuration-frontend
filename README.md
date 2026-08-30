@@ -1,4 +1,4 @@
-# QitsSpaConfiguration
+# qits-configuration-frontend
 
 The deployment configuration's frontend: what each application on this platform will be deployed
 with, and the screen an operator reads it on. Served by qits-configuration itself at the **root of
@@ -54,7 +54,8 @@ seeding. Neither belongs in a browser, so neither is in this app's API class to 
 
 ## How it is served
 
-qits-configuration carries this repository as a git submodule at `service/src/main/webui` — Quinoa's
+qits-configuration-service carries this repository as a git submodule at `service/src/main/webui` —
+Quinoa's
 ui-dir — and builds it during `mvn package`, serving the bundle at the root of its host. The root is
 spelled here as `baseHref` in `angular.json` and there as `quarkus.quinoa.ui-root-path`, both `/`;
 the two move together, and a disagreement serves a page whose every asset 404s. This repository
