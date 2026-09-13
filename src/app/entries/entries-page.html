@@ -38,8 +38,9 @@
   carry over its declared defaults. Every change is kept, with who made it.
 </p>
 <p class="posture">
-  The platform's own processes write these entries through the API, so this view is read-only. The
-  environment picker below navigates; it changes nothing.
+  The platform's own processes write these entries through the API, so this view does not set or
+  change them. The one change it can make is to remove an entry marked orphaned, and it asks you
+  first. The environment picker below navigates; it changes nothing.
 </p>
 
 <section class="env-bar" aria-label="Environment">
@@ -112,12 +113,20 @@
         </thead>
         <tbody>
           @for (row of rows(); track row.entry.key) {
-            <tr>
+            <tr [class.confirming]="removal()?.key === row.entry.key">
               <th scope="row" class="mono key">
                 {{ row.entry.key }}
                 @if (row.entry.orphaned) {
                   <span class="marks">
                     <qits-badge label="orphaned" tone="warning" />
+                    <qits-button
+                      class="remove"
+                      variant="ghost"
+                      size="sm"
+                      [disabled]="removing()"
+                      (pressed)="askRemove(row.entry.key)"
+                      >Remove</qits-button
+                    >
                   </span>
                 }
               </th>
@@ -154,6 +163,61 @@
                 <span class="by">by {{ actor(row.entry.updatedBy) }}</span>
               </td>
             </tr>
+            @if (removal()?.key === row.entry.key) {
+              <tr class="confirm-row">
+                <td colspan="5">
+                  <section class="confirm" aria-label="Confirm the removal">
+                    <p class="confirm-question">
+                      Remove <code>{{ row.entry.key }}</code> from {{ application() }} in
+                      {{ env() }}?
+                    </p>
+                    <ul class="confirm-facts">
+                      <li>
+                        This deletes the entry from qits-configuration. Its history keeps the old
+                        value.
+                      </li>
+                      @if (row.systemOnly) {
+                        <li>
+                          The next deployment of {{ application() }} in {{ env() }} does not change
+                          its container. The platform ignores this stored value and sets the address
+                          it renders.
+                        </li>
+                      } @else {
+                        <li>
+                          The next deployment of {{ application() }} in {{ env() }} removes the
+                          variable from its container.
+                        </li>
+                      }
+                      <li>
+                        If the bootstrap template still sets this key, a later bootstrap import
+                        brings it back.
+                      </li>
+                    </ul>
+                    @if (removalError()) {
+                      <p class="confirm-error" role="alert">
+                        ⚠ Could not remove this entry — {{ removalError() }}.
+                      </p>
+                    }
+                    <div class="confirm-actions">
+                      <qits-button
+                        variant="primary"
+                        size="sm"
+                        [busy]="removing()"
+                        (pressed)="confirmRemove(row.entry.key)"
+                        >{{ removing() ? 'Removing…' : 'Remove entry' }}</qits-button
+                      >
+                      <qits-button
+                        variant="ghost"
+                        size="sm"
+                        [disabled]="removing()"
+                        (pressed)="cancelRemove()"
+                        >Cancel</qits-button
+                      >
+                    </div>
+                  </section>
+                </td>
+              </tr>
+            }
           }
         </tbody>
       </table>
@@ -189,9 +253,11 @@
 
 <p class="note">
   <strong>orphaned</strong> is worked out at read time against the governing declaration and stored
-  nowhere. It says this row is not reaching the container, for one of two reasons: the declaration
-  does not account for the key at all, or it declares the key a <code>serviceAddress</code>, whose
-  address the platform renders per environment and whose stored row is ignored. Neither is an error,
-  and nothing cleans either up — a key dropped from a declaration leaves its rows exactly where they
-  were, which is what makes a rollback of that declaration cost nothing.
+  nowhere. It has one of two causes, and they differ in what reaches the container. If the
+  declaration does not name the key at all, the stored value still reaches the container on every
+  deployment until the row is removed. If the declaration names the key a
+  <code>serviceAddress</code>, the platform renders the address per environment and ignores the
+  stored value, so that value never reaches the container. Neither is an error, and nothing removes
+  either on its own — a key dropped from a declaration leaves its rows where they were, which is
+  what makes a rollback of that declaration cost nothing. An orphaned row has a Remove button.
 </p>

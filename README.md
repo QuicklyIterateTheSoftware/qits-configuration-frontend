@@ -9,7 +9,8 @@ platform chrome.
   in and what each of them holds.
 - **`/applications/<app>/envs/<env>`** — one application's entries in one environment, as they are
   stored now. Also at `/applications/<app>`, which means "whichever tier this application has" and
-  settles on one rather than redirecting.
+  settles on one rather than redirecting. An entry marked orphaned can be removed here, after a
+  confirmation.
 - **`/applications/<app>/envs/<env>/history`** — every write to that application in that
   environment, newest first, deletions included. Also env-less, on the same rule.
 - **`/applications/<app>/envs/<env>/resolved`** — the merged map a deployment started now would
@@ -42,17 +43,24 @@ its default; a key with a default and no row is invisible on the entries page an
 deployment; and the entries table is deliberately not the whole picture. The resolved page is.
 
 **An orphaned row is not an error.** The entries read computes `orphaned` against the governing
-declaration and it means one of two things — the declaration names no such key, or it names it a
-`serviceAddress` whose stored value the platform ignores in favour of the address it renders. Both
-say the same thing to a person: _this row is not reaching the container_. Nothing tidies them away,
-because one of them is a key somebody staged for a version that has not shipped yet.
+declaration, and it has one of two causes. If the declaration names no such key, the stored value
+still reaches the container on every deployment until somebody removes the row. If the declaration
+names the key a `serviceAddress`, the platform ignores the stored value in favour of the address it
+renders, so the value never reaches the container. Nothing removes an orphan on its own, because one
+of them may be a key somebody staged for a version that has not shipped yet. A person can remove one
+from the entries page.
 
-**THIS APPLICATION READS AND NEVER WRITES.** The entries are system state: the platform's own
-processes set them through the API — a deployment, a bootstrap import, a service that learns its own
-address — and each of those writes is part of a larger operation with more to do afterwards. A hand
-edit in a browser lands in the middle of that with none of the rest of it, so no screen here offers
-one, and the API class holds no PUT and no DELETE to reach for. The entries page says so in a
-sentence, because a table with no buttons otherwise reads as a table whose buttons failed to load.
+**THIS APPLICATION READS, AND REMOVES AN ENTRY ONLY WHEN IT IS FLAGGED `orphaned`.** It used to
+write nothing at all; the one removal is a decision made on 2026-09-13. The entries are system
+state: the platform's own processes set them through the API — a deployment, a bootstrap import, a
+service that learns its own address — and each of those writes is part of a larger operation with
+more to do afterwards. A hand edit in a browser lands in the middle of that with none of the rest of
+it, so no screen here sets or changes a value, and the API class holds no PUT. Removing an orphan is
+safe in a way an edit is not. For a `serviceAddress` key the stored value already does not reach the
+container. For an undeclared key it does, but the removal is easy to undo: the history keeps the old
+value, and the next bootstrap import, or the process that wrote the row, can write it again. The
+entries page offers Remove only on an orphaned row, asks for confirmation first, and says so in a
+sentence under the heading.
 
 **What this replaces is a file nobody could see.** Deployment environment used to be a hand-edited
 properties file on the deployer's config volume, snapshotted at boot: an edit was inert until the
@@ -92,10 +100,12 @@ That is recorded at cutover and this service does not hold it, so the version pi
 governing declaration **newest** and never _deployed_. The page answers "what would a deployment
 started now receive"; the matrix page carries the same caveat for the same reason.
 
-**`POST …/import` is still deliberately absent, and so is every write.** The import is the
-bootstrap's bulk seeding; the declaration POST and DELETE are the pipeline's, machine-guarded,
-because the only thing that can honestly assert what a version declared is the build that produced
-it. None of them is in this app's API class to be reached for.
+**`POST …/import` is still deliberately absent, and so is every other write.** The import is the
+bootstrap's bulk seeding; an entry PUT belongs to the platform's own processes; the declaration POST
+and DELETE are the pipeline's, machine-guarded, because the only thing that can honestly assert what
+a version declared is the build that produced it. None of them is in this app's API class to be
+reached for. The one DELETE the class holds removes a single entry, and only the entries page calls
+it, for an orphaned row.
 
 ## How it is served
 

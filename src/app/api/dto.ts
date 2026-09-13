@@ -1,7 +1,8 @@
 /**
  * The wire, written down. Every type here is the shape qits-configuration sends on
- * `/configuration/api`, and nothing here is this application's own idea. This app only reads, so
- * only the read shapes are here.
+ * `/configuration/api`, and nothing here is this application's own idea. This app reads, and its one
+ * write — removing an orphaned entry — sends no body and gets none back, so only the read shapes are
+ * here.
  *
  * **`entryClass`, not `class`.** The column is `class` and the service says why it cannot spell it
  * that way on the wire — a Java record component cannot be named after a keyword. The name travels
@@ -44,10 +45,11 @@ export interface ApplicationSummary {
 /**
  * One current entry, as the API hands it back.
  *
- * `orphaned` is computed at read time and stored nowhere: it is true when the application's
- * governing declaration does not account for the key, or declares it a `serviceAddress` whose stored
- * row is ignored in favour of the rendered address. Both mean the same thing to a person — this row
- * is not reaching the container — and neither is an error.
+ * `orphaned` is computed at read time and stored nowhere. It is true for one of two causes, and they
+ * differ in what reaches the container. If the governing declaration does not name the key, the
+ * stored value still reaches the container until the row is removed. If it declares the key a
+ * `serviceAddress`, the platform ignores the stored value in favour of the rendered address, so the
+ * value never reaches the container. Neither is an error.
  */
 export interface ConfigurationEntry {
   readonly env: string;

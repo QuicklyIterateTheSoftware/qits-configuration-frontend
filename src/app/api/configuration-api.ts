@@ -17,15 +17,22 @@ import type {
 } from './dto';
 
 /**
- * Everything this app reads, and it speaks to exactly one upstream: qits-configuration, through the
- * edge, at `/configuration/api`.
+ * Everything this app asks for, and it speaks to exactly one upstream: qits-configuration, through
+ * the edge, at `/configuration/api`.
  *
- * **THERE IS NO WRITE HERE, and its absence is the design.** The entries are system state: the
- * platform's own processes set them through the API, each write part of a larger operation with
- * more to do afterwards. This app is a reader of that state, so it holds no PUT and no DELETE —
- * nothing for a screen to reach for.
+ * **IT READS, AND HAS ONE WRITE: {@link removeEntry}, which removes an orphaned entry.** The entries
+ * are system state: the platform's own processes set them through the API, each write part of a
+ * larger operation with more to do afterwards. So this class holds no PUT, no import and no
+ * declaration write — nothing for a screen to reach for to set or change a value.
  *
- * Two consequences of the reads are deliberate:
+ * The one DELETE is a decision made on 2026-09-13. The entries page calls it only for a row the
+ * service flags `orphaned`, and only after the person confirms. That is safe for two reasons. An
+ * orphan of a `serviceAddress` key never reaches the container, because the platform ignores the
+ * stored value. An orphan of an undeclared key does reach the container, but the removal is easy to
+ * undo: the history keeps the old value, and a bootstrap import sets the key again if its template
+ * still names it. Keeping it to orphans is this app's rule, and the entries page is the only caller.
+ *
+ * Two consequences hold for the reads and the write alike:
  *
  * - **Every call is one-shot.** `firstValueFrom` unwraps the observable immediately, and there is no
  *   `httpResource` anywhere: the pages re-issue their own read from a retry button rather than on a
@@ -59,9 +66,9 @@ import type {
  * nothing and changes nothing.
  *
  * **The other half of that stance stands untouched.** `POST …/import` is the bootstrap's bulk
- * seeding and is still absent, as is every write — including the declaration POST and DELETE, which
- * are the pipeline's and are guarded machine-only for a reason a browser cannot satisfy. What this
- * class gained is a read.
+ * seeding and is still absent, as is every other write — an entry PUT, and the declaration POST and
+ * DELETE, which are the pipeline's and are guarded machine-only for a reason a browser cannot
+ * satisfy. What this class gained there is a read.
  */
 @Injectable({ providedIn: 'root' })
 export class ConfigurationApi {
@@ -103,8 +110,9 @@ export class ConfigurationApi {
    * nobody has written into.
    *
    * Each row carries `orphaned`, decided against the application's governing declaration and
-   * computed at read time. It is not a claim that the row is wrong; it is a claim that the row is
-   * not reaching the container.
+   * computed at read time. It is not a claim that the row is wrong. It says the declaration does not
+   * account for the row: either the key is not declared, and the value still reaches the container,
+   * or the key is a `serviceAddress`, and the platform ignores the stored value.
    */
   async entries(application: string, env: string): Promise<readonly ConfigurationEntry[]> {
     const response = await firstValueFrom(
@@ -182,6 +190,26 @@ export class ConfigurationApi {
       this.http.get<Declaration>(
         `${this.applicationUrl(application)}/declarations/${encodeURIComponent(version)}`,
       ),
+    );
+  }
+
+  /**
+   * Removes one entry from one environment. This is the only write in this class.
+   *
+   * The entries page calls it only for a row flagged `orphaned`, and only after the person confirms.
+   * The value is not lost: the service appends a deleted revision to the history.
+   *
+   * The key is percent-encoded like every other path segment here. Keys hold dots and brackets
+   * (`mounts[0].source`), and a bracket is not a safe character to paste into a path.
+   *
+   * A 204 resolves with nothing. A 404 means the entry is already gone — something removed it first
+   * — and reading the table again shows that. A 400 is a name the service refuses, and a 401 or 403
+   * means the session does not carry `qits:admin` or `qits:system`. Every failure is thrown whole,
+   * like a failed read, so the page can show the service's own message.
+   */
+  async removeEntry(application: string, env: string, key: string): Promise<void> {
+    await firstValueFrom(
+      this.http.delete<void>(`${this.envUrl(application, env)}/entries/${encodeURIComponent(key)}`),
     );
   }
 

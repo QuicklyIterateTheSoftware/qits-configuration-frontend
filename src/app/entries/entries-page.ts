@@ -10,6 +10,7 @@ import { toSignal } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, Router, RouterLink, convertToParamMap } from '@angular/router';
 import {
   QitsBadge,
+  QitsButton,
   QitsPicker,
   type QitsBadgeTone,
   type QitsPickerOption,
@@ -19,7 +20,7 @@ import type { ApplicationEnvSummary, ConfigurationEntry, Declaration } from '../
 import { Async } from '../ui/async';
 import { Empty } from '../ui/empty';
 import { NONE, actor, formatInstant, plural } from '../ui/format';
-import { LOADING, failed, ready, type Loadable } from '../ui/loadable';
+import { IDLE, LOADING, failed, ready, type Loadable } from '../ui/loadable';
 import { ConfigurationLinks } from '../ui/links';
 import { declaredDetail, isSystemOnly, sourceLabel, sourceTone, typeTone } from '../ui/source';
 
@@ -47,16 +48,35 @@ interface EntryRow {
 }
 
 /**
+ * The one removal this page has open: the key it is about, and how far the DELETE has got.
+ *
+ * `IDLE` is the confirmation asking, `LOADING` is the DELETE in flight, and an error is a DELETE
+ * that failed, drawn in the confirmation with the service's own message. There is no ready state:
+ * a removal that succeeds closes the confirmation, and the table read again is the answer.
+ */
+interface Removal {
+  readonly key: string;
+  readonly state: Loadable<never>;
+}
+
+/**
  * One application's stored configuration in ONE environment, as it is stored now.
  *
- * **This page reads and never writes, and that is a decision rather than an omission.** The entries
- * are system state: the platform's own processes write them through the API — a deployment, a
- * bootstrap import, a service that learns its own address — and every one of those writes is part of
- * a larger operation that has more to do afterwards. A hand edit in a browser lands in the middle of
- * that with none of the rest of it, so the screen offers no way to make one. The posture is said on
- * the page too, under the heading, because a table without buttons otherwise reads as a table whose
- * buttons have not loaded. The env picker is the one control here and it navigates; it changes
- * nothing.
+ * **This page reads, and its one write is removing an orphaned entry.** The entries are system
+ * state: the platform's own processes write them through the API — a deployment, a bootstrap
+ * import, a service that learns its own address — and every one of those writes is part of a larger
+ * operation that has more to do afterwards. A hand edit in a browser lands in the middle of that with
+ * none of the rest of it, so the screen offers no way to set or change a value.
+ *
+ * Removing an orphan is the exception, by a decision made on 2026-09-13. An orphaned row has a
+ * Remove button. A press opens a confirmation under the row, and nothing is sent until the person
+ * confirms. It is safe: an orphan of a `serviceAddress` key never reaches the container, and any
+ * orphan is easy to restore — the history keeps the old value, and a later bootstrap import sets the
+ * key again if its template still names it. One confirmation is open at a time, and while a DELETE
+ * is in flight every Remove button is disabled, so a second press cannot send a second delete. On
+ * success the page reads the table again rather than editing its own copy, so the table is what the
+ * store holds. The posture is said on the page too, under the heading. The env picker navigates; it
+ * changes nothing.
  *
  * **THE ENV IS PART OF THE ADDRESS, and this component serves both spellings of it.**
  * `applications/<app>/envs/<env>` names a tier outright. `applications/<app>` names none, which
@@ -87,11 +107,12 @@ interface EntryRow {
  * declaration's failure is drawn where the badges would have come from, with its own retry.
  *
  * **`orphaned` comes off the wire and is drawn as a marker rather than inferred here.** The service
- * computes it at read time against the governing declaration and stores it nowhere, and it covers
- * two different causes with one meaning: the key is not declared at all, or it is declared a
- * `serviceAddress` whose stored row the platform ignores in favour of the address it renders. Both
- * say the same thing to a person — this row is not reaching the container — and neither is an error
- * that anything cleans up.
+ * computes it at read time against the governing declaration and stores it nowhere. It has two
+ * causes, and they differ in what reaches the container. A key the declaration does not name still
+ * reaches the container on every deployment until the row is removed. A key the declaration names a
+ * `serviceAddress` never does: the platform renders the address and ignores the stored value. The
+ * confirmation says which of the two a row is. Neither is an error, and nothing removes either on
+ * its own.
  *
  * **THE VALUE IS THE POINT OF THIS SCREEN, so nothing here truncates one.** These values are mount
  * specifications, alias lists, URLs with query strings, occasionally something very long, and an
@@ -113,7 +134,7 @@ interface EntryRow {
 @Component({
   selector: 'app-entries-page',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [RouterLink, QitsBadge, QitsPicker, Async, Empty],
+  imports: [RouterLink, QitsBadge, QitsButton, QitsPicker, Async, Empty],
   templateUrl: './entries-page.html',
   styleUrls: ['../ui/page.css', './entries-page.css'],
 })
@@ -272,6 +293,21 @@ export class EntriesPage {
       : 'This application is configured in no environment yet.';
   });
 
+  /**
+   * The open confirmation, or `null` when none is open. One at a time: opening another row's
+   * confirmation closes this one, and nothing opens while a DELETE is in flight.
+   */
+  protected readonly removal = signal<Removal | null>(null);
+
+  /** True while a DELETE is in flight. Every Remove button and the confirmation's buttons wait. */
+  protected readonly removing = computed(() => this.removal()?.state.kind === 'loading');
+
+  /** Why the last removal failed: the service's own sentence, with its status in front. */
+  protected readonly removalError = computed(() => {
+    const state = this.removal()?.state;
+    return state?.kind === 'error' ? state.message : '';
+  });
+
   constructor() {
     // Three reads keyed on what each of them actually depends on, which is what keeps a hop between
     // tiers from re-reading the two that did not change. The application is a path segment, so
@@ -287,6 +323,9 @@ export class EntriesPage {
     effect(() => {
       const application = this.application();
       const env = this.env();
+      // A confirmation is about one row of one table. Another tier or application is another
+      // table, so the confirmation closes rather than open on a row with the same key there.
+      this.removal.set(null);
       if (application.length > 0 && env.length > 0) {
         this.loadEntries();
       }
@@ -371,6 +410,56 @@ export class EntriesPage {
         );
       },
       (error: unknown) => this.declarationState.set(failed(error)),
+    );
+  }
+
+  /**
+   * Remove was pressed on an orphaned row. This opens the confirmation under the row and sends
+   * nothing.
+   */
+  protected askRemove(key: string): void {
+    if (this.removing()) {
+      return;
+    }
+    this.removal.set({ key, state: IDLE });
+  }
+
+  /** Cancel was pressed. The confirmation closes and nothing is sent. */
+  protected cancelRemove(): void {
+    if (this.removing()) {
+      return;
+    }
+    this.removal.set(null);
+  }
+
+  /**
+   * The person confirmed. This sends the DELETE for the row the confirmation is about.
+   *
+   * On success the confirmation closes and the table is read again rather than spliced here, so the
+   * table shows what the store holds now. On failure the confirmation stays open with the service's
+   * message, and a second press tries again.
+   *
+   * An answer that arrives after the page has moved to another tier or application does nothing:
+   * the check is that the removal on screen is still the one this call started.
+   */
+  protected confirmRemove(key: string): void {
+    if (this.removing()) {
+      return;
+    }
+    const pending: Removal = { key, state: LOADING };
+    this.removal.set(pending);
+    this.api.removeEntry(this.application(), this.env(), key).then(
+      () => {
+        if (this.removal() === pending) {
+          this.removal.set(null);
+          this.loadEntries();
+        }
+      },
+      (error: unknown) => {
+        if (this.removal() === pending) {
+          this.removal.set({ key, state: failed(error) });
+        }
+      },
     );
   }
 

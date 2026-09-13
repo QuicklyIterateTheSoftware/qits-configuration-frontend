@@ -41,12 +41,15 @@ const LONG_VALUE =
  * - **a value is never truncated.** The whole point of the screen is reading what a deployment will
  *   carry, and a cell that clipped at some width would say something false about it while looking
  *   entirely normal.
- * - **the page offers no way to write.** The entries are system state and the platform's own
+ * - **the page offers no way to set a value.** The entries are system state and the platform's own
  *   processes set them; a control that wrote one from here would land in the middle of an operation
  *   with more to do afterwards.
- * - **it says so, in a sentence.** A table with no buttons otherwise reads as a table whose buttons
- *   failed to load — and now that there IS a control on the page, the sentence has to say what that
- *   control does.
+ * - **it removes only an orphan, and asks first.** Remove is drawn on an orphaned row and nowhere
+ *   else. It opens a confirmation that names what is removed and says what removal does, and
+ *   nothing is sent until the person confirms. A success reads the table again; a failure is shown
+ *   and the row stays.
+ * - **it says so, in a sentence.** A table with no edit buttons otherwise reads as a table whose
+ *   buttons failed to load, and the sentence has to account for the picker and for Remove.
  * - **the env-less address settles rather than redirects.** `applications/<app>` means "whichever
  *   tier this application has"; the page answers it and leaves the URL alone.
  * - **a row says what it is.** A declared type, an orphan marker, a `serviceAddress` the platform
@@ -161,12 +164,16 @@ describe('EntriesPage', () => {
   }
 
   /** A button by the words on it — the way an operator finds it. */
-  function press(label: string, within: ParentNode = page()): void {
+  function buttonLabelled(label: string, within: ParentNode = page()): HTMLButtonElement {
     const button = Array.from(within.querySelectorAll<HTMLButtonElement>('button')).find(
       (candidate) => candidate.textContent?.trim() === label,
     );
     expect(button, `no button labelled “${label}”`).toBeTruthy();
-    button?.click();
+    return button as HTMLButtonElement;
+  }
+
+  function press(label: string, within: ParentNode = page()): void {
+    buttonLabelled(label, within).click();
   }
 
   /** How a button announces itself: its own words, or the label it carries for a screen reader. */
@@ -266,24 +273,16 @@ describe('EntriesPage', () => {
   });
 
   /**
-   * **This assertion had to change, and what it had to keep is the point of it.**
+   * No form, no field, and with no orphan on screen the picker is the only button.
    *
-   * It used to read "no button, no field, no form", counting every button on this page's host and
-   * demanding zero. That count is no longer the right test: the page is env-addressed now and the
-   * env picker is a legitimate control — it navigates between tiers and writes nothing — so a page
-   * that had genuinely regained a write would still fail the count, and a page that had not would
-   * fail it too. A count that fails for the right reason and the wrong reason equally is a count
-   * that stops being read.
-   *
-   * So the shape of the claim is what is asserted instead: there is no `form`, no `input` and no
-   * `textarea` anywhere on this page — a read-only screen needs none of the three, and every way of
-   * writing an entry from a browser needs at least one — and every button that exists BELONGS to a
-   * control that cannot write: the picker, which navigates, or the async panel's retry, which
-   * re-issues a GET. Both are checked by where the button lives and by the name it announces itself
-   * with, so a write button smuggled in beside them is caught by the same test that lets these two
-   * through.
+   * Setting or changing a value from a browser needs a `form`, an `input` or a `textarea`, so none
+   * of the three may exist. Every button must belong to a control that cannot set a value: the
+   * picker, which navigates, or the async panel's retry, which re-issues a GET. Each is checked by
+   * where the button lives and by the name it announces, so a write button added beside them fails
+   * here. Remove is the one write, and it is drawn only on an orphaned row; the default scene has
+   * none, and the tests further down cover Remove.
    */
-  it('offers no way to write: no form, no field, and every button belongs to a reader’s control', async () => {
+  it('offers no way to set a value: no form, no field, and every button belongs to a reader’s control', async () => {
     await open();
     await scene();
 
@@ -303,12 +302,14 @@ describe('EntriesPage', () => {
     http.verify();
   });
 
-  it('says the view is read-only, in a sentence that accounts for the picker', async () => {
+  it('says what the view can change, in a sentence that accounts for the picker and for Remove', async () => {
     await open();
     await scene();
 
     const posture = page().querySelector('.posture')?.textContent;
-    expect(posture).toContain('read-only');
+    expect(posture).toContain('does not set or change them');
+    expect(posture).toContain('remove an entry marked orphaned');
+    expect(posture).toContain('asks you first');
     expect(posture).toContain('navigates');
     http.verify();
   });
@@ -443,13 +444,22 @@ describe('EntriesPage', () => {
   /**
    * The orphan marker: computed at read time by the service, drawn here, explained under the table.
    * It is not an error and nothing cleans it up, so the page must not draw it as one.
+   *
+   * The two causes differ in what reaches the container, and the note must say both: an undeclared
+   * key still reaches it, a `serviceAddress` key never does. It used to say that no orphan reaches
+   * the container, which was false for the first cause.
    */
-  it('marks an orphaned row and explains what being orphaned means', async () => {
+  it('marks an orphaned row and explains both causes of being orphaned', async () => {
     await open();
     await scene({ entries: [entry({ key: 'env.QITS_ANCIENT', orphaned: true })], keys: [] });
 
     expect(page().querySelector('tbody .marks')?.textContent).toContain('orphaned');
-    expect(view().textContent).toContain('not reaching the container');
+    const text = view().textContent;
+    expect(text).toContain(
+      'the stored value still reaches the container on every deployment until the row is removed',
+    );
+    expect(text).toContain('so that value never reaches the container');
+    expect(text).not.toContain('not reaching the container');
     expect(page().querySelector('.async-error')).toBeNull();
     http.verify();
   });
@@ -483,6 +493,200 @@ describe('EntriesPage', () => {
     expect(note).toContain('http://dev-qits-docs:8080');
     expect(note).toContain('ignored');
     http.verify();
+  });
+
+  describe('removing an orphan', () => {
+    /** An orphan of an undeclared key. Its key holds brackets, which the DELETE must encode. */
+    const ORPHAN = entry({ key: 'mounts[0].source', value: '/srv:/work:ro', orphaned: true });
+    const REMOVE_URL = `${entriesUrl('dev')}/mounts%5B0%5D.source`;
+
+    /** The drawn row whose key cell starts with `key`. */
+    function rowOf(key: string): HTMLTableRowElement {
+      const row = Array.from(page().querySelectorAll<HTMLTableRowElement>('tbody tr')).find(
+        (candidate) =>
+          candidate.querySelector('th.key')?.textContent?.trim().split(/\s+/)[0] === key,
+      );
+      expect(row, `no row for ${key}`).toBeTruthy();
+      return row as HTMLTableRowElement;
+    }
+
+    function buttonsIn(within: ParentNode): string[] {
+      return Array.from(within.querySelectorAll<HTMLButtonElement>('button')).map(accessibleName);
+    }
+
+    function confirmation(): HTMLElement | null {
+      return view().querySelector<HTMLElement>('.confirm');
+    }
+
+    /** Remove on the orphan, then the confirmation's own button. */
+    async function confirmRemoval(): Promise<void> {
+      press('Remove', rowOf('mounts[0].source'));
+      await settle();
+      press('Remove entry');
+      await settle();
+    }
+
+    it('offers Remove on an orphaned row, and nothing on any other row', async () => {
+      await open();
+      await scene({ entries: [entry(), ORPHAN] });
+
+      expect(buttonsIn(rowOf('env.QITS_REGISTRY'))).toEqual([]);
+      expect(buttonsIn(rowOf('mounts[0].source'))).toEqual(['Remove']);
+      expect(confirmation()).toBeNull();
+      http.verify();
+    });
+
+    /**
+     * Remove only asks. The confirmation opens under the row it is about, names the key, the
+     * application and the tier, and says the three things removal does. Nothing is sent yet, and
+     * `http.verify()` is the proof.
+     */
+    it('asks first, naming what is removed and saying what removal does', async () => {
+      await open();
+      await scene({ entries: [entry(), ORPHAN] });
+
+      press('Remove', rowOf('mounts[0].source'));
+      await settle();
+
+      const panel = rowOf('mounts[0].source').nextElementSibling?.querySelector('.confirm');
+      expect(panel, 'no confirmation under the orphaned row').toBeTruthy();
+      const text = panel?.textContent ?? '';
+      expect(text).toContain('Remove mounts[0].source from qits-docs in dev?');
+      expect(text).toContain('This deletes the entry from qits-configuration.');
+      expect(text).toContain(
+        'The next deployment of qits-docs in dev removes the variable from its container.',
+      );
+      expect(text).toContain(
+        'If the bootstrap template still sets this key, a later bootstrap import brings it back.',
+      );
+      expect(buttonsIn(panel as Element)).toEqual(['Remove entry', 'Cancel']);
+      http.verify();
+    });
+
+    /**
+     * The stored value of a `serviceAddress` key never reached the container, so the confirmation
+     * must not claim that removing it takes anything out of the container.
+     */
+    it('tells a serviceAddress orphan apart: removing it does not change the container', async () => {
+      await open();
+      await scene({
+        entries: [entry({ key: 'env.QITS_DOCS_URL', value: 'http://stale:1', orphaned: true })],
+        keys: [
+          declaredKey({
+            key: 'env.QITS_DOCS_URL',
+            type: 'serviceAddress',
+            defaultValue: null,
+            service: 'qits-docs',
+            port: 8080,
+          }),
+        ],
+      });
+
+      press('Remove', rowOf('env.QITS_DOCS_URL'));
+      await settle();
+
+      const text = confirmation()?.textContent ?? '';
+      expect(text).toContain('does not change its container');
+      expect(text).toContain('ignores this stored value');
+      expect(text).not.toContain('removes the variable');
+      expect(text).toContain('a later bootstrap import brings it back');
+      http.verify();
+    });
+
+    it('closes the confirmation on Cancel and sends nothing', async () => {
+      await open();
+      await scene({ entries: [entry(), ORPHAN] });
+
+      press('Remove', rowOf('mounts[0].source'));
+      await settle();
+      press('Cancel');
+      await settle();
+
+      expect(confirmation()).toBeNull();
+      expect(page().querySelectorAll('tbody tr')).toHaveLength(2);
+      http.verify();
+    });
+
+    it('keeps one confirmation open at a time', async () => {
+      await open();
+      await scene({ entries: [ORPHAN, entry({ key: 'env.QITS_ANCIENT', orphaned: true })] });
+
+      press('Remove', rowOf('mounts[0].source'));
+      await settle();
+      press('Remove', rowOf('env.QITS_ANCIENT'));
+      await settle();
+
+      expect(view().querySelectorAll('.confirm')).toHaveLength(1);
+      expect(confirmation()?.textContent).toContain('Remove env.QITS_ANCIENT from qits-docs');
+      http.verify();
+    });
+
+    /**
+     * Confirm sends one DELETE at the key's encoded address. While it is in flight every control
+     * that could send a second one is disabled. On success the table is read again, not spliced
+     * here, so the removed row is gone because the store says so.
+     */
+    it('removes the entry on confirm, at its encoded address, then reads the table again', async () => {
+      await open();
+      await scene({ entries: [entry(), ORPHAN] });
+
+      await confirmRemoval();
+
+      const request = http.expectOne(REMOVE_URL);
+      expect(request.request.method).toBe('DELETE');
+
+      expect(buttonLabelled('Removing…').disabled).toBe(true);
+      expect(buttonLabelled('Cancel').disabled).toBe(true);
+      expect(buttonLabelled('Remove', rowOf('mounts[0].source')).disabled).toBe(true);
+      buttonLabelled('Removing…').click();
+      buttonLabelled('Remove', rowOf('mounts[0].source')).click();
+      await settle();
+      http.expectNone(REMOVE_URL);
+
+      request.flush(null, { status: 204, statusText: 'No Content' });
+      await settle();
+
+      http.expectOne(entriesUrl('dev')).flush({ entries: [entry()] });
+      await settle();
+
+      expect(page().querySelectorAll('tbody tr')).toHaveLength(1);
+      expect(page().querySelector('tbody')?.textContent).not.toContain('mounts[0].source');
+      expect(confirmation()).toBeNull();
+      http.verify();
+    });
+
+    /**
+     * A failed removal is shown with the service's own message, in the confirmation, and the row
+     * stays. Nothing reads the table again, because nothing changed. A second press tries again.
+     */
+    it('shows a failed removal, keeps the row, and lets the person try again', async () => {
+      await open();
+      await scene({ entries: [entry(), ORPHAN] });
+
+      await confirmRemoval();
+      http
+        .expectOne(REMOVE_URL)
+        .flush({ message: 'no such entry' }, { status: 404, statusText: 'Not Found' });
+      await settle();
+
+      const error = confirmation()?.querySelector('.confirm-error');
+      expect(error?.textContent).toContain('Could not remove this entry');
+      expect(error?.textContent).toContain('404 no such entry');
+      expect(rowOf('mounts[0].source')).toBeTruthy();
+      expect(buttonLabelled('Remove entry').disabled).toBe(false);
+      http.verify();
+
+      press('Remove entry');
+      await settle();
+      http.expectOne(REMOVE_URL).flush(null, { status: 204, statusText: 'No Content' });
+      await settle();
+      http.expectOne(entriesUrl('dev')).flush({ entries: [entry()] });
+      await settle();
+
+      expect(confirmation()).toBeNull();
+      expect(page().querySelectorAll('tbody tr')).toHaveLength(1);
+      http.verify();
+    });
   });
 
   /**

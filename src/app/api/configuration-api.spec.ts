@@ -4,13 +4,14 @@ import { TestBed } from '@angular/core/testing';
 import { ConfigurationApi } from './configuration-api';
 
 /**
- * Every read this app makes, at the address qits-configuration serves it at. There are only reads:
- * this app writes nothing.
+ * Every call this app makes, at the address qits-configuration serves it at. All of them are reads
+ * but one: removing an orphaned entry.
  *
  * The assertions worth having here are the ones that are invisible on screen when they are wrong:
  * **every path is relative**, because a configured origin would leave the edge's session cookie
- * behind and turn every read into a 401; **every call is a GET**, which is what keeps this class a
- * reader; **the env is in the path**, because a read that silently answered for the wrong tier is
+ * behind and turn every read into a 401; **every read is a GET, and the one write is a DELETE on one
+ * entry**, which keeps this class a reader of everything else; **the env and the key are in the
+ * path, encoded**, because a call that silently answered for the wrong tier or key is
  * the one failure of this service nobody would see; and **a failure reaches the caller whole**,
  * because the page draws the service's own sentence from it.
  *
@@ -275,5 +276,41 @@ describe('ConfigurationApi', () => {
       );
 
     await expect(resolved).rejects.toMatchObject({ status: 404 });
+  });
+
+  /**
+   * The one write. A key holds dots and brackets, so it is encoded like every other segment: `[`
+   * and `]` go out as `%5B` and `%5D`, and the dot stays a dot.
+   */
+  it('removes one entry with a DELETE at its encoded address, and resolves on 204', async () => {
+    const removed = api.removeEntry('qits-docs', 'dev', 'mounts[0].source');
+
+    const request = http.expectOne(
+      '/configuration/api/applications/qits-docs/envs/dev/entries/mounts%5B0%5D.source',
+    );
+    expect(request.request.method).toBe('DELETE');
+    expect(request.request.body).toBeNull();
+    request.flush(null, { status: 204, statusText: 'No Content' });
+
+    await expect(removed).resolves.toBeUndefined();
+  });
+
+  /**
+   * A 404 on a removal means the entry is already gone. It is not this class's to soften into a
+   * success: the page shows the service's message, and the person decides what to do.
+   */
+  it('lets a removal of an entry that is gone fail as the 404 it is', async () => {
+    const removed = api.removeEntry('qits docs', 'pre prod', 'env.QITS_ANCIENT');
+
+    http
+      .expectOne(
+        '/configuration/api/applications/qits%20docs/envs/pre%20prod/entries/env.QITS_ANCIENT',
+      )
+      .flush({ message: 'no such entry' }, { status: 404, statusText: 'Not Found' });
+
+    await expect(removed).rejects.toMatchObject({
+      status: 404,
+      error: { message: 'no such entry' },
+    });
   });
 });

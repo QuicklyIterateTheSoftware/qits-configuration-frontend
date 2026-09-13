@@ -16,10 +16,10 @@
   white-space: nowrap;
 }
 
-/* The posture line. Said quietly, right where the buttons an operator might look for are not: a
-   table with no actions otherwise reads as a table whose actions failed to load. It has to say what
-   the picker is, too — a control on a read-only page is the one thing that could make a reader
-   doubt the sentence it sits under. */
+/* The posture line. Said quietly under the heading: what this page can change and what it cannot.
+   A table with no edit buttons otherwise reads as a table whose buttons failed to load. It says
+   what the picker is, too, and that removing an orphan is the one change — a control the sentence
+   does not account for would make a reader doubt the sentence. */
 .posture {
   margin: -0.6rem 0 1rem;
   color: #6b7280;
@@ -67,6 +67,61 @@
 .marks {
   display: block;
   margin-top: 0.25rem;
+}
+
+/* Remove sits beside the orphaned badge, because the badge is the reason it is there. */
+.marks .remove {
+  margin-left: 0.35rem;
+}
+
+/* The confirmation opens under the row it is about, across the whole table, so the row and its
+   question read as one. The row loses its bottom rule to join the two. */
+tr.confirming > th,
+tr.confirming > td {
+  border-bottom: none;
+}
+
+.confirm-row > td {
+  padding: 0 0 0.75rem;
+  white-space: normal;
+}
+
+.confirm {
+  max-width: 46rem;
+  padding: 0.6rem 0.75rem;
+  border: 1px solid #fcd34d;
+  border-radius: 0.375rem;
+  background: #fffbeb;
+}
+
+.confirm-question {
+  margin: 0 0 0.35rem;
+  font-weight: 600;
+}
+
+.confirm-question code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  overflow-wrap: anywhere;
+}
+
+.confirm-facts {
+  margin: 0 0 0.6rem;
+  padding-left: 1.2rem;
+}
+
+.confirm-facts li {
+  margin: 0.15rem 0;
+}
+
+.confirm-error {
+  margin: 0 0 0.5rem;
+  color: #b91c1c;
+}
+
+.confirm-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
 }
 
 /* A key the governing declaration does not spell has no type, and the cell says so in words. An
