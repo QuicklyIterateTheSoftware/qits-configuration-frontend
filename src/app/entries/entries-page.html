@@ -257,7 +257,8 @@
   declaration does not name the key at all, the stored value still reaches the container on every
   deployment until the row is removed. If the declaration names the key a
   <code>serviceAddress</code>, the platform renders the address per environment and ignores the
-  stored value, so that value never reaches the container. Neither is an error, and nothing removes
-  either on its own — a key dropped from a declaration leaves its rows where they were, which is
-  what makes a rollback of that declaration cost nothing. An orphaned row has a Remove button.
+  stored value, so that value never reaches the container. Neither is an error, and a key dropped
+  from a declaration leaves its rows where they were on its own — which is what makes a rollback of
+  that declaration cost nothing — until the platform's own GC decides the key is retired and removes
+  the row without anyone pressing anything. An orphaned row has a Remove button for the rest.
 </p>

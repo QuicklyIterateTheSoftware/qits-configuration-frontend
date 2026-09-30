@@ -30,7 +30,10 @@ import type {
  * orphan of a `serviceAddress` key never reaches the container, because the platform ignores the
  * stored value. An orphan of an undeclared key does reach the container, but the removal is easy to
  * undo: the history keeps the old value, and a bootstrap import sets the key again if its template
- * still names it. Keeping it to orphans is this app's rule, and the entries page is the only caller.
+ * still names it. Keeping it to orphans is this app's rule, and the entries page is the only caller
+ * this class has — it is not the only caller the service has. The platform's own GC removes a
+ * retired key's entry on its own, through the same delete, with no screen and no confirmation in
+ * the loop; this method is one way an entry gets removed, not the only one.
  *
  * Two consequences hold for the reads and the write alike:
  *

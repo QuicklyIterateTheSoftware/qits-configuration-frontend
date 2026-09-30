@@ -46,9 +46,12 @@ deployment; and the entries table is deliberately not the whole picture. The res
 declaration, and it has one of two causes. If the declaration names no such key, the stored value
 still reaches the container on every deployment until somebody removes the row. If the declaration
 names the key a `serviceAddress`, the platform ignores the stored value in favour of the address it
-renders, so the value never reaches the container. Nothing removes an orphan on its own, because one
-of them may be a key somebody staged for a version that has not shipped yet. A person can remove one
-from the entries page.
+renders, so the value never reaches the container. The platform's own GC removes some of these on
+its own — the entries of keys that are genuinely *retired*, stated by no version the platform could
+still run, serving or one rollback away. A staged key, never declared by anything, is never a
+candidate: the GC cannot tell a key staged for a version that has not shipped yet from one nobody
+ever meant to declare, so it leaves both for a person. A person can remove any orphaned row from the
+entries page.
 
 **THIS APPLICATION READS, AND REMOVES AN ENTRY ONLY WHEN IT IS FLAGGED `orphaned`.** It used to
 write nothing at all; the one removal is a decision made on 2026-09-13. The entries are system
